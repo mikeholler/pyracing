@@ -31,13 +31,13 @@ class Client:
         """
         self.username = username
         self.password = password
-        self.session = httpx.AsyncClient()
+        self.aclient = httpx.AsyncClient()
         self.log = log
         self.__initial_auth = False
 
     async def _authenticate(self):
         """ Sends a POST request to iRacings login server, initiating a
-        persistent connection stored in self.session
+        persistent connection stored in self.aclient
         """
         self.log.info('Authenticating...')
 
@@ -47,48 +47,50 @@ class Client:
             'utcoffset': round(abs(time.localtime().tm_gmtoff / 60)),
             'todaysdate': ''  # Unknown purpose, but exists as a hidden form.
         }
+        async with self.aclient as session:
 
-        auth_post = await self.session.post(ct.URL_LOGIN2, data=login_data)
+            auth_post = await session.post(ct.URL_LOGIN2, data=login_data)
 
-        if 'failedlogin' in str(auth_post.url):
-            self.log.warning('Login Failed. Please check credentials')
-            raise UserWarning(
-                'The login POST request was redirected to /failedlogin, '
-                'indicating an authentication failure. If credentials are '
-                'correct, check that a captcha is not required by manually '
-                'visiting members.iracing.com'
-            )
-        else:
-            self.log.info('Login successful')
+            if 'failedlogin' in str(auth_post.url):
+                self.log.warning('Login Failed. Please check credentials')
+                raise UserWarning(
+                    'The login POST request was redirected to /failedlogin, '
+                    'indicating an authentication failure. If credentials are '
+                    'correct, check that a captcha is not required by manually '
+                    'visiting members.iracing.com'
+                )
+            else:
+                self.log.info('Login successful')
 
     async def _build_request(self, url, params):
         """ Builds the final GET request from url and params
         """
-        if not self.session.cookies.__bool__():
+        if not self.aclient.cookies.__bool__():
             self.log.info("No cookies in cookie jar.")
             await self._authenticate()
 
         self.log.info(f'Request being sent to: {url} with params: {params}')
 
-        response = await self.session.get(
-            url,
-            params=params,
-            allow_redirects=False,
-            timeout=10.0
-        )
-        self.log.info(f'Request sent for URL: {response.url}')
-        self.log.info(f'Status code of response: {response.status_code}')
-        self.log.debug(f'Contents of the response object: {response.__dict__}')
-
-        if response.is_error or response.is_redirect:
-            self.log.info(
-                'Request was redirected, indicating that the cookies are '
-                'invalid. Initiating authentication and retrying the request.'
+        async with self.aclient as session:
+            response = await session.get(
+                url,
+                params=params,
+                allow_redirects=False,
+                timeout=10.0
             )
-            await self._authenticate()
-            return await self._build_request(url, params)
+            self.log.info(f'Request sent for URL: {response.url}')
+            self.log.info(f'Status code of response: {response.status_code}')
+            self.log.debug(f'Contents of the response object: {response.__dict__}')
 
-        return response
+            if response.is_error or response.is_redirect:
+                self.log.info(
+                    'Request was redirected, indicating that the cookies are '
+                    'invalid. Initiating authentication and retrying the request.'
+                )
+                await self._authenticate()
+                return await self._build_request(url, params)
+
+            return response
 
     async def active_op_counts(
         self,
