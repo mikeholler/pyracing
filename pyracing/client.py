@@ -31,7 +31,7 @@ class Client:
         """
         self.username = username
         self.password = password
-        self.session = httpx.AsyncClient()
+        self.cookies = None
         self.log = log
         self.__initial_auth = False
 
@@ -48,34 +48,38 @@ class Client:
             'todaysdate': ''  # Unknown purpose, but exists as a hidden form.
         }
 
-        auth_post = await self.session.post(ct.URL_LOGIN2, data=login_data)
+        async with httpx.AsyncClient() as session:
+            response = await session.post(ct.URL_LOGIN2, data=login_data)
 
-        if 'failedlogin' in str(auth_post.url):
-            self.log.warning('Login Failed. Please check credentials')
-            raise UserWarning(
-                'The login POST request was redirected to /failedlogin, '
-                'indicating an authentication failure. If credentials are '
-                'correct, check that a captcha is not required by manually '
-                'visiting members.iracing.com'
-            )
-        else:
-            self.log.info('Login successful')
+            if 'failedlogin' in str(response.url):
+                self.log.warning('Login Failed. Please check credentials')
+                raise UserWarning(
+                    'The login POST request was redirected to /failedlogin, '
+                    'indicating an authentication failure. If credentials are '
+                    'correct, check that a captcha is not required by manually '
+                    'visiting members.iracing.com'
+                )
+            else:
+                self.cookies = session.cookies
+                self.log.info('Login successful')
 
     async def _build_request(self, url, params):
         """ Builds the final GET request from url and params
         """
-        if not self.session.cookies.__bool__():
+        if not self.cookies:
             self.log.info("No cookies in cookie jar.")
             await self._authenticate()
 
         self.log.info(f'Request being sent to: {url} with params: {params}')
 
-        response = await self.session.get(
-            url,
-            params=params,
-            allow_redirects=False,
-            timeout=10.0
-        )
+        async with httpx.AsyncClient(cookies=self.cookies) as session:
+            response = await session.get(
+                url,
+                params=params,
+                allow_redirects=False,
+                timeout=10.0
+            )
+
         self.log.info(f'Request sent for URL: {response.url}')
         self.log.info(f'Status code of response: {response.status_code}')
         self.log.debug(f'Contents of the response object: {response.__dict__}')
