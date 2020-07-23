@@ -31,12 +31,12 @@ class Client:
         """
         self.username = username
         self.password = password
-        self.aclient = httpx.AsyncClient()
+        self.session = httpx.AsyncClient()
         self.log = log
 
     async def _authenticate(self):
         """ Sends a POST request to iRacings login server, initiating a
-        persistent connection stored in self.aclient
+        persistent connection stored in self.session
         """
         self.log.info('Authenticating...')
 
@@ -45,11 +45,11 @@ class Client:
             'password': self.password,
             'utcoffset': round(abs(time.localtime().tm_gmtoff / 60)),
             'todaysdate': ''  # Unknown purpose, but exists as a hidden form.
-        }
-        async with self.aclient as session:
-
+            }
+        async with self.session as session:
             auth_post = await session.post(ct.URL_LOGIN2, data=login_data)
 
+            # Raise error on failed login
             if 'failedlogin' in str(auth_post.url):
                 self.log.warning('Login Failed. Please check credentials')
                 raise UserWarning(
@@ -64,13 +64,13 @@ class Client:
     async def _build_request(self, url, params):
         """ Builds the final GET request from url and params
         """
-        if not self.aclient.cookies.__bool__():
+        if not self.session.cookies.__bool__():
             self.log.info("No cookies in cookie jar.")
             await self._authenticate()
 
         self.log.info(f'Request being sent to: {url} with params: {params}')
 
-        async with self.aclient as session:
+        async with self.session as session:
             response = await session.get(
                 url,
                 params=params,
