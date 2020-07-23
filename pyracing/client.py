@@ -49,6 +49,7 @@ class Client:
         }
 
         auth_post = await self.session.post(ct.URL_LOGIN2, data=login_data)
+        await self.session.aclose()
 
         if 'failedlogin' in str(auth_post.url):
             self.log.warning('Login Failed. Please check credentials')
@@ -76,6 +77,7 @@ class Client:
             allow_redirects=False,
             timeout=10.0
         )
+        await self.session.aclose()
         self.log.info(f'Request sent for URL: {response.url}')
         self.log.info(f'Status code of response: {response.status_code}')
         self.log.debug(f'Contents of the response object: {response.__dict__}')
