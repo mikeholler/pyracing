@@ -8,7 +8,6 @@ from datetime import datetime
 import httpx
 import time
 
-
 # This module authenticates a session, builds a URL query from parameters,
 # and parses returned data into instanced objects from iRacing endpoints.
 # Each method contains all **known** paramaters available for an endpoint.
@@ -38,15 +37,14 @@ class Client:
         """ Sends a POST request to iRacings login server, initiating a
         persistent connection stored in self.session
         """
-        self.log.info('Authenticating...')
-
         login_data = {
             'username': self.username,
             'password': self.password,
             'utcoffset': round(abs(time.localtime().tm_gmtoff / 60)),
             'todaysdate': ''  # Unknown purpose, but exists as a hidden form.
-            }
+        }
         async with self.session as session:
+            self.log.info('Authenticating...')
             auth_post = await session.post(ct.URL_LOGIN2, data=login_data)
 
             # Raise error on failed login
@@ -78,16 +76,19 @@ class Client:
                 timeout=10.0
             )
             self.log.info(f'Request sent for URL: {response.url}')
-            self.log.info(f'Status code of response: {response.status_code}')
-            self.log.debug(f'Contents of the response object: {response.__dict__}')
+            self.log.debug(f'Status code of response: {response.status_code}')
+            self.log.debug(
+                f'Contents of the response object: {response.__dict__}')
 
             if response.is_error or response.is_redirect:
-                self.log.info(
-                    'Request was redirected, indicating that the cookies are '
-                    'invalid. Initiating authentication and retrying the request.'
+                self.log.warning(
+                    'Request was redirected, indicating that cookies expired. '
+                    'Initiating authentication and retrying the request.'
                 )
                 await self._authenticate()
-                return await self._build_request(url, params)
+                req = await self._build_request(url, params)
+
+                return req
 
             return response
 
@@ -201,10 +202,7 @@ class Client:
             'seasonid': season_id,
         }
         # Adds the key name to key_list if set to True
-        key_list = [key for key in field_dict if field_dict.get(key)]
-
-        # iRacing accepts these as a single, comma seperated, parameter
-        key_list = ','.join(key_list)
+        key_list = ','.join([key for key in field_dict if field_dict.get(key)])
 
         payload = {
             'onlyActive': 1 if only_active else 0,
