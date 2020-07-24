@@ -4,10 +4,9 @@ from .helpers import default_logger, now_five_min_floor
 from .response_objects import career_stats, iracing_data, historical_data
 from .response_objects import chart_data, session_data, upcoming_events
 
-from datetime import datetime, timedelta
+from datetime import datetime
 import httpx
 import time
-
 
 # This module authenticates a session, builds a URL query from parameters,
 # and parses returned data into instanced objects from iRacing endpoints.
@@ -38,15 +37,14 @@ class Client:
         """ Sends a POST request to iRacings login server, initiating a
         persistent connection stored in self.session
         """
-        self.log.info('Authenticating...')
-
         login_data = {
             'username': self.username,
             'password': self.password,
             'utcoffset': round(abs(time.localtime().tm_gmtoff / 60)),
             'todaysdate': ''  # Unknown purpose, but exists as a hidden form.
-            }
+        }
         async with self.session as session:
+            self.log.info('Authenticating...')
             auth_post = await session.post(ct.URL_LOGIN2, data=login_data)
 
             # Raise error on failed login
@@ -78,16 +76,19 @@ class Client:
                 timeout=10.0
             )
             self.log.info(f'Request sent for URL: {response.url}')
-            self.log.info(f'Status code of response: {response.status_code}')
-            self.log.debug(f'Contents of the response object: {response.__dict__}')
+            self.log.debug(f'Status code of response: {response.status_code}')
+            self.log.debug(
+                f'Contents of the response object: {response.__dict__}')
 
             if response.is_error or response.is_redirect:
-                self.log.info(
-                    'Request was redirected, indicating that the cookies are '
-                    'invalid. Initiating authentication and retrying the request.'
+                self.log.warning(
+                    'Request was redirected, indicating that cookies expired. '
+                    'Initiating authentication and retrying the request.'
                 )
                 await self._authenticate()
-                return await self._build_request(url, params)
+                req = await self._build_request(url, params)
+
+                return req
 
             return response
 
@@ -201,10 +202,7 @@ class Client:
             'seasonid': season_id,
         }
         # Adds the key name to key_list if set to True
-        key_list = [key for key in field_dict if field_dict.get(key)]
-
-        # iRacing accepts these as a single, comma seperated, parameter
-        key_list = ','.join(key_list)
+        key_list = ','.join([key for key in field_dict if field_dict.get(key)])
 
         payload = {
             'onlyActive': 1 if only_active else 0,
@@ -376,10 +374,13 @@ class Client:
         get_irating().current will give the most recent irating of a cust_id
         """
         chart_type = ct.ChartType.irating.value
-        response = await self.stats_chart(category, cust_id, chart_type)
+        response = await self.stats_chart(cust_id, category, chart_type)
         ir_list = [chart_data.IRating(x) for x in response.json()]
 
-        return chart_data.ChartData(category, ct.ChartType.irating.value, ir_list)
+        return chart_data.ChartData(
+            category,
+            ct.ChartType.irating.value,
+            ir_list)
 
     async def last_races_stats(self, cust_id):
         """ Returns stat summary for the driver's last 10 races as seen
@@ -668,7 +669,7 @@ class Client:
         that are used in the /CareerStats charts.
         """
         chart_type = ct.ChartType.ttrating.value
-        response = await self.stats_chart(category, cust_id, chart_type)
+        response = await self.stats_chart(cust_id, category, chart_type)
         ttrating_list = [chart_data.TTRating(x) for x in response.json()]
 
         return chart_data.ChartData(category, chart_type, ttrating_list)
@@ -679,7 +680,7 @@ class Client:
         for how to further use this data.
         """
         chart_type = ct.ChartType.license_class.value
-        response = await self.stats_chart(category, cust_id, chart_type)
+        response = await self.stats_chart(cust_id, category, chart_type)
         license_class_list = [chart_data.LicenseClass(x) for
                               x in response.json()]
 
