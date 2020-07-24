@@ -15,6 +15,9 @@ setuptools.setup(
       url='https://github.com/Esterni/pyracing',
       packages=setuptools.find_packages(),
       python_requires='>=3.8',
+      install_requires=[
+          "httpx>=0.13"
+      ],
       classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",
